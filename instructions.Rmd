@@ -1,0 +1,136 @@
+---
+title: "Flu Dashboard Workshop Instructions"
+output: prettydoc::html_pretty
+---
+
+```{r echo = F, message = F}
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(tidyverse)
+```
+
+# Overview
+
+In this workshop, you will create a dashboard summarizing the 2013 outbreak of influenza A H7N9 in China using data provided by the `outbreaks` package. 
+
+Your final product should be similar to the provided `target_final_output.html`. You can also refer to `sample_dashboard_gapminder.qmd` file for guidance; the dashboard created there is very similar to the one you need to create.
+
+## Files in Your Workshop Folder
+
+Below are the key files in your workshop folder:
+
+- **target_final_output.html**: An example dashboard that demonstrates what your final output should look like. Aim to get close to this example in function and style.
+
+- **index.qmd**: This is where you'll build your dashboard.
+
+- **sample_dashboard_gapminder.qmd**: A sample dashboard that you can reference for style and code snippets.
+
+## Workflow Steps
+
+### Step 1: Review Example Outputs
+
+Start by reviewing the `target_final_output.html` to understand the required outputs and functionalities of your dashboard. 
+
+Next, take a look at the `sample_dashboard_gampinder.qmd` file to see how that dashboard was created. Render the `sample_dashboard_gapminder.qmd` file to HTML to see the output.
+
+Then, once you feel you have a good understanding of the required outputs and how to create them, you can start building your dashboard in the `index.qmd` file. 
+
+### Step 2: Calculate Key Metrics
+
+Start by calculating the main metrics to display on your dashboard:
+
+- **Total Number of Cases**: Count all the rows in the dataset.
+- **Total Deaths**: Count the number of deaths. Consider the outcome variable for this.
+- **Total Hospitalizations**: Count the number of hospitalizations. You can `filter(!is.na(date_of_hospitalisation))` to get this.
+
+Then put these into valueboxes in your dashboard, using the code from the `sample_dashboard_gapminder.qmd` file as a reference.
+
+### Step 3: Plot of Case Counts
+
+- Create a bar chart as seen in  using `ggplot2` to show the number of cases per province. Your plot should resemble the one in the `target_final_output.html` file. Add this to a section in your dashboard.
+
+### Step 4: Map of Cases by Province
+
+- As this step could be quite time-consuming, below we provide you with the code to create the map. Note that all this code should be familiar to you by now. If it is not, please find time later to review our geospatial visualization material. Copy it and add to a section in your dashboard.
+
+```{r results='hide', message=FALSE, warning = FALSE}
+pacman::p_load(outbreaks, rgeoboundaries, plotly)
+
+### MAP OF CASES PER PROVINCE
+province_summary <- fluH7N9_china_2013 %>% 
+  group_by(province) %>% 
+  summarise(total_cases = n()) 
+
+china_map <- rgeoboundaries::gb_adm1("china")
+
+# Check the keys to see if join will be successful
+setdiff(province_summary$province, china_map$shapeName)
+setdiff(china_map$shapeName, province_summary$province)
+# Some work to be done to harmonize these
+
+china_map <- china_map %>%
+  # Remove the strings Province, Municipality and Autonomous Region 
+  # to allow matching
+  mutate(province = str_trim(
+    str_remove(shapeName, "Province|Municipality|Autonomous Region")
+  ))
+
+# Check if join will work fine
+setdiff(province_summary$province, china_map$province)
+
+# Fix Guangdong, which based on a quick Google is actually Guangzhou
+china_map <- china_map %>% 
+  mutate(province = if_else(province == "Guangzhou", "Guangdong", province)) 
+  
+# Check again
+setdiff(province_summary$province, china_map$province)
+
+# Now join
+china_map_joined <- 
+  left_join(china_map, province_summary, by = "province") %>% 
+  # Create tooltip label 
+  mutate(tooltip_label = paste0(province, ": ", total_cases))
+
+china_map_plot <- ggplot(china_map_joined) +
+  geom_sf(aes(fill = total_cases, text = tooltip_label)) + 
+  theme_void() +
+  labs(fill = "Number of Cases") + 
+  theme(legend.position = "none")
+
+china_map_plot_ggplotly <- 
+  ggplotly(china_map_plot, tooltip = "text")
+```
+
+```{r}
+china_map_plot_ggplotly
+```
+
+### Step 5: Download Data Page
+
+- Implement a data download section using `reactable` for an interactive table and a download button. You can modify and use the code below, which implements a similar table for the `gapminder` dataset.
+
+```{r message=FALSE}
+# Load packages 
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(htmltools, reactable, gapminder)
+
+htmltools::browsable(
+  tagList(
+    reactable(gapminder, 
+              elementId = "gapminder-table", 
+              searchable = T, 
+              filterable = T), 
+    
+tags$button("Download as CSV", 
+            onclick = "Reactable.downloadDataCSV('gapminder-table')")
+  )
+)
+```
+
+### Step 6: Render and Deploy
+
+- Once your dashboard is complete, knit the `index.qmd` to HTML, review your output, and deploy it to GitHub Pages.
+
+
+### Challenge
+
+- Following the example at this link, https://rstudio.github.io/bslib/articles/value-boxes/, try to add sparklines to your value boxes. These should show the cumulative number of cases, deaths, and hospitalizations over time.
